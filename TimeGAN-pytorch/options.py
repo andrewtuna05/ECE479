@@ -104,6 +104,13 @@ class Options():
 
         self.parser.add_argument('--manualseed', default=-1, type=int, help='manual seed')
 
+        # Transformer Model
+        self.parser.add_argument('--d_model', default=24, type=int)
+        self.parser.add_argument('--nhead', default=4, type=int)
+        self.parser.add_argument('--dim_feedforward', default=96, type=int)
+        self.parser.add_argument('--dropout', default=0.1, type=float)
+        self.parser.add_argument('--max_seq_len', default=24, type=int)
+
         # Train
         self.parser.add_argument('--print_freq', type=int, default=1000, help='frequency of showing training results on console')
         self.parser.add_argument('--load_weights', action='store_true', help='Load the pretrained weights')

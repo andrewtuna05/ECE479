@@ -20,6 +20,7 @@ model.py: Network Modules
 (5) Discriminator
 """
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.init as init
@@ -72,32 +73,80 @@ class EncoderRNN(nn.Module):
     
 
     '''
-    Unimplemented Encoder Transformer So far
+    Positional Enconding to enforce time order in Transformer model
     '''
-    class EncoderTransformer(nn.Module):
-      """Embedding network between original feature space to latent space.
 
-          Args:
-            - input: input time-series features. (L, N, X) = (24, ?, 6)
-            - h3: (num_layers, N, H). [3, ?, 24]
+class PositionalEncoding(nn.Module):
+  def __init__(self, d_model, max_len=500):
+      super().__init__()
 
-          Returns:
-            - H: embeddings
-          """
-      def __init__(self, opt):
-          super().__init__()
-          self.rnn = nn.GRU(input_size=opt.z_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
-        # self.norm = nn.BatchNorm1d(opt.hidden_dim)
-          self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
-          self.sigmoid = nn.Sigmoid()
-          self.apply(_weights_init)
+      pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
+      position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
 
-      def forward(self, input, sigmoid=True):
-          e_outputs, _ = self.rnn(input)
-          H = self.fc(e_outputs)
-          if sigmoid:
-              H = self.sigmoid(H)
-          return H
+      div_term = torch.exp(
+          torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+      )
+
+      pe[:, 0::2] = torch.sin(position * div_term)
+      if d_model % 2 == 0:
+          pe[:, 1::2] = torch.cos(position * div_term)
+      else:
+          pe[:, 1::2] = torch.cos(position * div_term[:-1])
+
+      pe = pe.unsqueeze(1)  # (max_len, 1, d_model)
+      self.register_buffer("pe", pe)
+
+  def forward(self, x):
+      # x: (L, N, d_model)
+      L = x.size(0)
+      return x + self.pe[:L]
+    
+
+class EncoderTransformer(nn.Module):
+    """
+    Embedding network between original feature space and latent space.
+
+    Args:
+      - input: input time-series features. (L, N, z_dim)
+
+    Returns:
+      - H: embeddings. (L, N, hidden_dim)
+    """
+    def __init__(self, opt):
+        super().__init__()
+
+        self.input_proj = nn.Linear(opt.z_dim, opt.d_model)
+        self.pos_encoder = PositionalEncoding(opt.d_model, max_len=opt.max_seq_len)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=opt.d_model,
+            nhead=opt.nhead,
+            dim_feedforward=opt.dim_feedforward,
+            dropout=opt.dropout,
+            batch_first=False
+        )
+
+        self.transformer = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=opt.num_layer
+        )
+
+        self.fc = nn.Linear(opt.d_model, opt.hidden_dim)
+        self.sigmoid = nn.Sigmoid()
+
+        self.apply(_weights_init)
+
+    def forward(self, input, sigmoid=True):
+        # input: (L, N, z_dim)
+        x = self.input_proj(input)       # (L, N, d_model)
+        x = self.pos_encoder(x)          # (L, N, d_model)
+        e_outputs = self.transformer(x)  # (L, N, d_model)
+        H = self.fc(e_outputs)           # (L, N, hidden_dim)
+
+        if sigmoid:
+            H = self.sigmoid(H)
+
+        return H
 
 
 class Recovery(nn.Module):
