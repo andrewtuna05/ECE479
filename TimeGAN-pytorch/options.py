@@ -131,6 +131,8 @@ class Options():
         """
 
         self.opt = self.parser.parse_args()
+        if self.opt.d_model % self.opt.nhead != 0:
+            raise ValueError("d_model must be divisible by nhead")
         self.opt.isTrain = self.isTrain  # train or test
 
         str_ids = self.opt.gpu_ids.split(',')

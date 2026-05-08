@@ -58,7 +58,7 @@ class EncoderRNN(nn.Module):
         """
     def __init__(self, opt):
         super().__init__()
-        self.rnn = nn.GRU(input_size=opt.z_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
+        self.rnn = nn.GRU(input_size=opt.z_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer, batch_first=True)
        # self.norm = nn.BatchNorm1d(opt.hidden_dim)
         self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
         self.sigmoid = nn.Sigmoid()
@@ -77,29 +77,35 @@ class EncoderRNN(nn.Module):
     '''
 
 class PositionalEncoding(nn.Module):
-  def __init__(self, d_model, max_len=500):
-      super().__init__()
+    def __init__(self, d_model, max_len=500):
+        super().__init__()
 
-      pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
-      position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        pe = torch.zeros(max_len, d_model)  # (max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
 
-      div_term = torch.exp(
-          torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
-      )
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+        )
 
-      pe[:, 0::2] = torch.sin(position * div_term)
-      if d_model % 2 == 0:
-          pe[:, 1::2] = torch.cos(position * div_term)
-      else:
-          pe[:, 1::2] = torch.cos(position * div_term[:-1])
+        pe[:, 0::2] = torch.sin(position * div_term)
 
-      pe = pe.unsqueeze(1)  # (max_len, 1, d_model)
-      self.register_buffer("pe", pe)
+        if d_model % 2 == 0:
+            pe[:, 1::2] = torch.cos(position * div_term)
+        else:
+            pe[:, 1::2] = torch.cos(position * div_term[:-1])
 
-  def forward(self, x):
-      # x: (L, N, d_model)
-      L = x.size(0)
-      return x + self.pe[:L]
+        pe = pe.unsqueeze(0)  # (1, max_len, d_model)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        # x: (N, L, d_model)
+        L = x.size(1)
+
+        if L > self.pe.size(1):
+            raise ValueError(
+                f"Sequence length {L} exceeds maximum positional encoding length {self.pe.size(1)}"
+            )
+        return x + self.pe[:, :L, :]
     
 
 class EncoderTransformer(nn.Module):
@@ -107,10 +113,10 @@ class EncoderTransformer(nn.Module):
     Embedding network between original feature space and latent space.
 
     Args:
-      - input: input time-series features. (L, N, z_dim)
+      - input: input time-series features. (N, L, z_dim)
 
     Returns:
-      - H: embeddings. (L, N, hidden_dim)
+      - H: embeddings. (N, L, hidden_dim)
     """
     def __init__(self, opt):
         super().__init__()
@@ -123,7 +129,7 @@ class EncoderTransformer(nn.Module):
             nhead=opt.nhead,
             dim_feedforward=opt.dim_feedforward,
             dropout=opt.dropout,
-            batch_first=False
+            batch_first=True
         )
 
         self.transformer = nn.TransformerEncoder(
@@ -137,12 +143,11 @@ class EncoderTransformer(nn.Module):
         self.apply(_weights_init)
 
     def forward(self, input, sigmoid=True):
-        # input: (L, N, z_dim)
-        x = self.input_proj(input)       # (L, N, d_model)
-        x = self.pos_encoder(x)          # (L, N, d_model)
-        e_outputs = self.transformer(x)  # (L, N, d_model)
-        H = self.fc(e_outputs)           # (L, N, hidden_dim)
-
+        # input: (N, L, z_dim)
+        x = self.input_proj(input)       # (N, L, d_model)
+        x = self.pos_encoder(x)          # (N, L, d_model)
+        e_outputs = self.transformer(x)  # (N, L, d_model)
+        H = self.fc(e_outputs)           # (N, L, hidden_dim)
         if sigmoid:
             H = self.sigmoid(H)
 
@@ -161,7 +166,7 @@ class Recovery(nn.Module):
     """
     def __init__(self, opt):
         super(Recovery, self).__init__()
-        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.z_dim, num_layers=opt.num_layer)
+        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.z_dim, num_layers=opt.num_layer, batch_first=True)
         
       #  self.norm = nn.BatchNorm1d(opt.z_dim)
         self.fc = nn.Linear(opt.z_dim, opt.z_dim)
@@ -188,7 +193,7 @@ class Generator(nn.Module):
     """
     def __init__(self, opt):
         super(Generator, self).__init__()
-        self.rnn = nn.GRU(input_size=opt.z_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
+        self.rnn = nn.GRU(input_size=opt.z_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer, batch_first=True)
      #   self.norm = nn.LayerNorm(opt.hidden_dim)
         self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
         self.sigmoid = nn.Sigmoid()
@@ -214,7 +219,7 @@ class Supervisor(nn.Module):
     """
     def __init__(self, opt):
         super(Supervisor, self).__init__()
-        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
+        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer, batch_first=True)
       #  self.norm = nn.LayerNorm(opt.hidden_dim)
         self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
         self.sigmoid = nn.Sigmoid()
@@ -241,7 +246,7 @@ class DiscriminatorRNN(nn.Module):
     """
     def __init__(self, opt):
         super().__init__()
-        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
+        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer, batch_first=True)
       #  self.norm = nn.LayerNorm(opt.hidden_dim)
         self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
         self.sigmoid = nn.Sigmoid()
@@ -254,33 +259,46 @@ class DiscriminatorRNN(nn.Module):
             Y_hat = self.sigmoid(Y_hat)
         return Y_hat
     
-
-'''
-Unimplemented Discriminator Transformer So far
-'''
     
 class DiscriminatorTransformer(nn.Module):
-    """Discriminate the original and synthetic time-series data.
+    """Transformer discriminator for latent time-series data.
 
     Args:
-      - H: latent representation
-      - T: input time information
+      - input: latent representation, shape (N, L, hidden_dim)
 
     Returns:
-      - Y_hat: classification results between original and synthetic time-series
+      - Y_hat: classification scores, shape (N, L, hidden_dim)
     """
     def __init__(self, opt):
         super().__init__()
-        self.rnn = nn.GRU(input_size=opt.hidden_dim, hidden_size=opt.hidden_dim, num_layers=opt.num_layer)
-      #  self.norm = nn.LayerNorm(opt.hidden_dim)
-        self.fc = nn.Linear(opt.hidden_dim, opt.hidden_dim)
+
+        self.input_proj = nn.Linear(opt.hidden_dim, opt.d_model)
+        self.pos_encoder = PositionalEncoding(opt.d_model, max_len=opt.max_seq_len)
+
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=opt.d_model,
+            nhead=opt.nhead,
+            dim_feedforward=opt.dim_feedforward,
+            dropout=opt.dropout,
+            batch_first=True
+        )
+
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=opt.num_layer)
+
+        self.fc = nn.Linear(opt.d_model, opt.hidden_dim)
         self.sigmoid = nn.Sigmoid()
+
         self.apply(_weights_init)
 
     def forward(self, input, sigmoid=True):
-        d_outputs, _ = self.rnn(input)
-        Y_hat = self.fc(d_outputs)
+        # input: (N, L, hidden_dim)
+        x = self.input_proj(input)       # (N, L, d_model)
+        x = self.pos_encoder(x)          # (N, L, d_model)
+        d_outputs = self.transformer(x)  # (N, L, d_model)
+        Y_hat = self.fc(d_outputs)       # (N, L, hidden_dim)
+
         if sigmoid:
             Y_hat = self.sigmoid(Y_hat)
+
         return Y_hat
 
