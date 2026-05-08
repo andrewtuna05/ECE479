@@ -1,0 +1,40 @@
+------------ Options -------------
+batch_size: 128
+beta1: 0.9
+d_model: 24
+data_name: stock
+device: cuda
+dim_feedforward: 96
+discriminator_type: rnn
+display: False
+display_id: 0
+display_port: 8097
+display_server: http://localhost
+dropout: 0.1
+encoder_type: transformer
+gpu_ids: [0]
+hidden_dim: 24
+isTrain: True
+iteration: 10000
+load_weights: False
+lr: 0.001
+manualseed: -1
+max_seq_len: 24
+metric_iteration: 5
+model: TimeGAN
+module: gru
+name: stock_transformer_encoder_rnn_discriminator
+ngpu: 1
+nhead: 4
+num_layer: 3
+outf: ./output
+print_freq: 1000
+resume: 
+seq_len: 24
+w_e0: 10
+w_es: 0.1
+w_g: 100
+w_gamma: 1
+workers: 8
+z_dim: 6
+-------------- End ----------------

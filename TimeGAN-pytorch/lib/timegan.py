@@ -168,26 +168,32 @@ class BaseModel():
     """
 
     for iter in range(self.opt.iteration):
-      # Train for one iter
       self.train_one_iter_er()
-
-      print('Encoder training step: '+ str(iter) + '/' + str(self.opt.iteration))
+    
+      if iter % 1000 == 0:
+        print(f"step: {iter}/{self.opt.iteration}, e_loss: {self.err_er.item():.4f}")
+    
+    print("Finish Embedding Network Training")
 
     for iter in range(self.opt.iteration):
-      # Train for one iter
       self.train_one_iter_s()
-
-      print('Superviser training step: '+ str(iter) + '/' + str(self.opt.iteration))
+    
+      if iter % 1000 == 0:
+        print(f"step: {iter}/{self.opt.iteration}, s_loss: {self.err_s.item():.4f}")
+    
+    print("Finish Training with Supervised Loss Only")
 
     for iter in range(self.opt.iteration):
-      # Train for one iter
       for kk in range(2):
         self.train_one_iter_g()
         self.train_one_iter_er_()
-
+    
       self.train_one_iter_d()
+    
+      if iter % 1000 == 0:
+        print(f"step: {iter}/{self.opt.iteration}, joint training")
+    print("Finish Joint Training")
 
-      print('Superviser training step: '+ str(iter) + '/' + str(self.opt.iteration))
 
     self.save_weights(self.opt.iteration)
     self.generated_data = self.generation(self.opt.batch_size)
@@ -365,7 +371,7 @@ class TimeGAN(BaseModel):
       """
       self.err_er = self.l_mse(self.X_tilde, self.X)
       self.err_er.backward(retain_graph=True)
-      print("Loss: ", self.err_er)
+      #print("Loss: ", self.err_er)
 
     def backward_er_(self):
       """ Backpropagate through netE
@@ -377,28 +383,38 @@ class TimeGAN(BaseModel):
 
     #  print("Loss: ", self.err_er_, self.err_s)
     def backward_g(self):
-      """ Backpropagate through netG
-      """
+      """ Backpropagate through netG """
+    
       self.err_g_U = self.l_bce(self.Y_fake, torch.ones_like(self.Y_fake))
-
       self.err_g_U_e = self.l_bce(self.Y_fake_e, torch.ones_like(self.Y_fake_e))
-      self.err_g_V1 = torch.mean(torch.abs(torch.sqrt(torch.std(self.X_hat,[0])[1] + 1e-6) - torch.sqrt(torch.std(self.X,[0])[1] + 1e-6)))   # |a^2 - b^2|
-      self.err_g_V2 = torch.mean(torch.abs((torch.mean(self.X_hat,[0])[0]) - (torch.mean(self.X,[0])[0])))  # |a - b|
-      self.err_s = self.l_mse(self.H_supervise[:,:-1,:], self.H[:,1:,:])
+    
+      # 2. Moment matching loss *FIXING TO MATCH THE TENSORFLOW VERSION
+      x_hat_mean = torch.mean(self.X_hat, dim=0)
+      x_mean = torch.mean(self.X, dim=0)
+    
+      x_hat_var = torch.var(self.X_hat, dim=0, unbiased=False)
+      x_var = torch.var(self.X, dim=0, unbiased=False)
+    
+      self.err_g_V1 = torch.mean(torch.abs(torch.sqrt(x_hat_var + 1e-6) - torch.sqrt(x_var + 1e-6)))
+    
+      self.err_g_V2 = torch.mean(torch.abs(x_hat_mean - x_mean))
+    
+      self.err_s = self.l_mse(self.H_supervise[:, :-1, :], self.H[:, 1:, :])
+
       self.err_g = self.err_g_U + \
-                   self.err_g_U_e * self.opt.w_gamma + \
-                   self.err_g_V1 * self.opt.w_g + \
-                   self.err_g_V2 * self.opt.w_g + \
-                   torch.sqrt(self.err_s) 
+             self.err_g_U_e * self.opt.w_gamma + \
+             self.opt.w_g * (self.err_g_V1 + self.err_g_V2) + \
+             100 * torch.sqrt(self.err_s)
+    
       self.err_g.backward(retain_graph=True)
-      print("Loss G: ", self.err_g)
+      # print("Loss G: ", self.err_g)
 
     def backward_s(self):
       """ Backpropagate through netS
       """
       self.err_s = self.l_mse(self.H[:,1:,:], self.H_supervise[:,:-1,:])
       self.err_s.backward(retain_graph=True)
-      print("Loss S: ", self.err_s)
+      #print("Loss S: ", self.err_s)
    #   print(torch.autograd.grad(self.err_s, self.nets.parameters()))
 
     def backward_d(self):
