@@ -3,3 +3,4 @@ env.yml
 TimeGAN-pytorch/__pycache__/
 TimeGAN-pytorch/lib/__pycache__/
 TimeGAN-pytorch/lib/metrics/__pycache__/
+AFML/
