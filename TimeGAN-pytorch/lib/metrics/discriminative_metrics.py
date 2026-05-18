@@ -21,7 +21,7 @@ Output: discriminative score (np.abs(classification accuracy - 0.5))
 # Necessary Packages
 import tensorflow as tf
 import tensorflow.compat.v1 as tf1
-tf1.disable_eager_execution()
+tf1.disable_v2_behavior()
 import numpy as np
 from sklearn.metrics import accuracy_score
 from utils import train_test_divide, extract_time
@@ -52,7 +52,7 @@ def discriminative_score_metrics (ori_data, generated_data):
   ## Builde a post-hoc RNN discriminator network 
   # Network parameters
   hidden_dim = int(dim/2)
-  iterations = 100
+  iterations = 10000
   batch_size = 128
     
   # Input place holders
